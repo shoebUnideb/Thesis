@@ -1,0 +1,425 @@
+================================================================================
+  CHAPTER 4 — SYSTEM IMPLEMENTATION
+================================================================================
+
+
+4.1 Synthetic Dataset Generation (Fresnel Forward Simulation)
+───────────────────────────────────────────────────────────────
+
+The foundation of everything that follows is a synthetic dataset built by
+numerically evaluating the Fresnel thin-film forward model described in Chapter 2.
+Because no real experimental instrument was available for this study, the simulation
+serves as the ground truth: it defines both the training data for the ML models and
+the reference measurements against which all predictions are evaluated. Using
+synthetic data has a practical consequence that is worth stating explicitly, it
+means the results are free from uncontrolled experimental artefacts, instrument
+drift, and alignment errors, but it also means they describe an idealised physical
+scenario. The relationship between synthetic performance and real-instrument
+performance is a question for future work.
+
+The simulation is implemented in the script 2_simulation/main.py. The configuration
+is fixed: angle of incidence 70 degrees, wavelengths from 300 to 800 nm in 1 nm
+steps (501 points), and film thicknesses from 20 to 80 nm in 1 nm steps (61 values).
+Across five semiconductor materials, this produces a total of 501 × 61 × 5 = 152,805
+simulation runs. Each run evaluates the full Airy thin-film interference formula for
+both polarisation states independently, using complex-valued Fresnel coefficients
+throughout.
+
+The optical constants for each material are loaded from pre-tabulated CSV files at
+every wavelength, so dispersive effects are fully accounted for. For each
+(material, thickness, wavelength) triplet, the calculation proceeds as follows. The
+refraction angle in the film is computed using Snell's law in complex form:
+
+      θ_1 = arcsin(N_0 · sin θ_0 / N_1)                              ...(4.1)
+
+The Fresnel reflection coefficients at the air/film interface (subscript 01) and at
+the film/substrate interface (subscript 12) are then computed for both polarisation
+states using equations (2.4) and (2.5). The phase thickness accumulated during a
+single traversal of the film is:
+
+      β = (2π / λ) · N_1 · d · cos θ_1                               ...(4.2)
+
+The total reflection amplitude for each polarisation, accounting for the infinite
+series of multiple reflections inside the film, follows from the Airy formula
+(equation 2.8). Once r_total,p and r_total,s are obtained, the ellipsometric
+angles are extracted as:
+
+      Ψ = arctan(|r_p / r_s|)    (converted to degrees)
+      Δ = arg(r_p / r_s)         (converted to degrees)
+
+These two numbers are stored as a row in the output CSV, along with the material
+label, film thickness, and wavelength. The full long-format output has five columns:
+material, thickness_nm, wavelength_nm, psi_deg, delta_deg. There are 152,805 rows
+in total.
+
+The reason for working in long format at this stage is flexibility: it is easier to
+filter by wavelength range or downsample by thickness at the pivoting step than to
+keep the data permanently wide. Conversion to wide format, one row per
+(material, thickness) pair, with 1,002 feature columns for the 501 Ψ and 501 Δ
+values, is done inside the ML training scripts at run time. The long-format CSV is
+the single source of truth.
+
+[FIGURE 4.1: Example simulated spectra for all five materials at a representative
+thickness, e.g. d = 50 nm. Two subplots side by side: Ψ(λ) on the left and Δ(λ)
+on the right. Overlay all five materials with distinct line colours. This shows the
+reader the diversity of the training data and motivates why the multi-material
+problem is harder than a single-material one.]
+
+The main simulation runs in a few seconds on a laptop. No parallelisation was
+needed. The output file, ellipsometry_dataset.csv, is the input for every
+subsequent step of the pipeline.
+
+
+4.2 Noise Modelling
+─────────────────────
+
+Five noise models are implemented in 2_simulation/noise.py. Each one reads the
+clean dataset, applies the relevant perturbation to the psi_deg and delta_deg
+columns, wraps the Delta values back into the range [-180°, 180°] to maintain
+physical consistency, and saves the result as a separate CSV. The five output files
+share the exact same column structure as the clean dataset and are called
+dataset_gaussian_noise.csv, dataset_relative_noise.csv, dataset_uniform_noise.csv,
+dataset_bias_noise.csv, and dataset_mixed_noise.csv.
+
+The wrapping step deserves a brief comment. Delta is a phase angle and is periodic
+with period 360 degrees. Adding noise to a Delta value that sits near the +180° or
+-180° boundary can push it outside the physical range. The wrap operation:
+
+      Δ_wrapped = (Δ + 180°) mod 360° − 180°                         ...(4.3)
+
+keeps all values in [-180°, 180°] without altering the underlying phase information.
+This is applied after every noise addition operation and to both noisy and clean
+Delta values as a consistency check.
+
+Gaussian noise adds an independent zero-mean normal draw to each Ψ and Δ value at
+each wavelength point. The standard deviation is 0.5 degrees. The independence
+across wavelengths is deliberate: shot noise in a CCD detector is spectrally
+uncorrelated because each pixel receives a statistically independent photon count.
+The noise is redrawn independently for each row in the dataset, so every
+(material, thickness) spectrum receives a different noise realisation.
+
+Relative noise multiplies each Ψ and Δ value by a factor drawn from a uniform
+distribution over [1 − α, 1 + α] with α = 0.01 (one percent). The draw is
+independent at each wavelength. This represents a multiplicative noise source —
+intensity fluctuations that scale with signal amplitude, rather than an additive
+one. The practical difference is that relative noise is larger where Ψ and Δ are
+large, and smaller where they are small, which produces a qualitatively different
+error pattern across the spectrum.
+
+Uniform noise adds a draw from U(−1°, +1°) to each data point. Relative to
+Gaussian noise (σ = 0.5°), uniform noise at ±1° is wider by a factor of about 1.73
+in standard deviation terms and has a flat probability density rather than a peaked
+one. It provides a worst-case symmetric bound. In practice, real noise distributions
+are rarely uniform. The model is included because it is the standard comparison
+partner to Gaussian in robustness studies.
+
+Systematic bias adds a fixed constant of +0.5 degrees to every Ψ and Δ value at
+every wavelength. Unlike the random noise types, the perturbation is identical for
+every row and every wavelength within a measurement. This is the hardest type of
+noise for ML to handle, because it does not average out across samples or wavelengths.
+A model trained on clean data will see a consistent offset between training and test
+data, with no within-sample variance to hint at the direction of the bias.
+
+Mixed noise superimposes Gaussian (σ = 0.5°) and bias (+0.5°) simultaneously, so
+the total perturbation at each wavelength is:
+
+      ε_mixed(λ) = ε_G(λ) + b,     ε_G ~ N(0, 0.25),   b = +0.5°   ...(4.4)
+
+This is the most physically realistic model: a well-used instrument typically has
+residual calibration offsets (bias) alongside unavoidable random fluctuations.
+
+One implementation note: the noise in these datasets is applied at the long-format
+level (one row per wavelength point) rather than at the spectrum level. For
+Gaussian, relative, and uniform noise, each wavelength point within a spectrum gets
+an independent draw, which is the physically correct behaviour for spectrally
+uncorrelated noise. For bias noise, every point in the file gets the same constant
+added, which is also correct, bias is a global instrument offset, not a per-
+wavelength random effect.
+
+
+4.3 Machine Learning Pipeline
+───────────────────────────────
+
+The ML pipeline is implemented in 6_ml_averaged/ml_averaged.py. The script loads
+the clean ellipsometry dataset, pivots it to wide format, and then executes two
+studies in sequence. The same pipeline structure, with the clean dataset replaced
+by a noise variant, is used in 7_ml_noise/ml_noise.py for the noise robustness
+study.
+
+Dataset Pivoting. The long-format dataset (152,805 rows × 5 columns) is pivoted
+into wide format using a two-step procedure. First, the psi_deg values are pivoted
+so that each row corresponds to a unique (material, thickness) pair and each column
+corresponds to one wavelength. This produces a 305 × 501 matrix for the Ψ channels.
+The same operation is applied to delta_deg, yielding a second 305 × 501 matrix for
+the Δ channels. The two matrices are concatenated horizontally, giving a final
+feature matrix of 305 rows by 1,002 columns. Column names follow the convention
+psi_300, psi_301, ..., psi_800, delta_300, ..., delta_800. The target vector is
+the thickness_nm column, extracted before pivoting.
+
+Train/Test Split. All experiments use an 80/20 stratified train/test split, where
+stratification is by material label. With 305 total samples (61 thicknesses × 5
+materials), the split gives 244 training samples and 61 test samples. Stratification
+ensures that all five materials appear in both the training and test set with equal
+proportions, otherwise, with only 61 samples per material, unlucky splits could
+exclude a material from training entirely. The split is controlled by a random seed
+argument, and every experiment is run under seeds [42, 0, 1, 7, 13] sequentially.
+
+Wavelength Subsetting. For Study 1, wavelength subsets of size n_wl are constructed
+by selecting n_wl evenly-spaced indices from the full 501-wavelength array using
+numpy.linspace, then rounding to integer positions. This preserves the approximate
+spectral coverage at all subset sizes rather than truncating from one end, which
+would bias the feature set toward UV or IR. At n_wl = 501, all columns are used.
+At n_wl = 50, 50 evenly-spaced wavelengths are selected across the full 300–800 nm
+range, with both Ψ and Δ columns for those wavelengths, giving a 100-column feature
+matrix.
+
+Model Training. Three models are trained in each experiment. Linear Regression
+uses the sklearn.linear_model.LinearRegression implementation with default settings:
+no regularisation, ordinary least-squares solution. Random Forest uses
+sklearn.ensemble.RandomForestRegressor with 100 trees, n_jobs=-1 for parallelism
+across CPU cores, and a seed-controlled random state. The MLP uses
+sklearn.neural_network.MLPRegressor with hidden_layer_sizes=(256, 128, 64),
+activation='relu', max_iter=2000, early_stopping=True with a 10% validation
+fraction, and the L-BFGS solver (the default for small datasets). Before the MLP
+is trained, the feature matrix is standardised to zero mean and unit variance using
+sklearn.preprocessing.StandardScaler fitted on the training split only. This
+prevents the test set from influencing the scaling and eliminates a common source
+of data leakage.
+
+The Random Forest and Linear Regression models receive unstandardised feature
+values. This is intentional: decision trees are invariant to monotonic feature
+transformations, so standardisation would change nothing for RF. For LR, the
+unstandardised results are appropriate for comparison with the theoretical
+underdetermined floor. Regularisation and standardisation would unfairly improve LR
+relative to its raw performance.
+
+Result Aggregation. After all five seeds are evaluated for a given (model, condition)
+pair, the five RMSE values, five MAE values, and five R² values are averaged to
+produce a mean and a standard deviation. These are the numbers reported throughout
+Chapter 5. The standard deviation across seeds quantifies how sensitive the result
+is to the random choice of train/test split and model initialisation. A small
+standard deviation indicates a stable, reliable estimate. A large one suggests that
+the particular split matters, which is usually a sign that the dataset is small
+relative to the problem complexity.
+
+
+4.4 Analytical Inverse Solver (Lookup Table Grid Search)
+──────────────────────────────────────────────────────────
+
+The analytical baseline solver is implemented in 8_analytical_baseline/
+analytical_inverse.py. It uses no training data and no statistical model. Given a
+test spectrum (Ψ_meas(λ), Δ_meas(λ)) from a known material, it predicts the film
+thickness by finding the thickness on a pre-computed grid that minimises the sum of
+squared residuals between the measured and model spectra.
+
+The implementation proceeds in two phases. In the first phase, a lookup table is
+built for each material. For a given material with known complex refractive index
+array N_1(λ) and the fixed substrate N_2(λ), the forward model is evaluated
+simultaneously over all 501 wavelengths and all 1,491 grid thicknesses in a single
+vectorised NumPy operation. This is efficient because all the Fresnel operations
+can be expressed as element-wise array arithmetic with broadcasting over both
+the wavelength and thickness dimensions. The result is a lookup table of shape
+(1491, 501, 2), thickness grid points × wavelengths × (Ψ, Δ). Building the
+lookup table for all five materials takes a few seconds.
+
+The thickness grid spans from 1.0 nm to 150.0 nm in steps of 0.1 nm, giving 1,491
+candidate values. The step size of 0.1 nm is fine enough that the best-fit
+thickness is not meaningfully limited by grid resolution: the Ψ/Δ sensitivity to
+thickness is continuous and well-behaved over this range, and the contribution of
+grid-step error to the reported RMSE is far below 0.1 nm on average.
+
+In the second phase, each test sample is processed individually. For a test sample
+from material m with measured spectrum (Ψ_meas, Δ_meas), the chi-squared cost
+function is evaluated over all grid points:
+
+      χ²(d) = Σ_λ [ (Ψ_model(d,λ) − Ψ_meas(λ))² + (Δ_model(d,λ) − Δ_meas(λ))² ]
+                                                                       ...(4.5)
+
+where the model values come directly from the lookup table. Because the lookup table
+is already in memory as a NumPy array, this sum-of-squared-residuals calculation is
+a single vectorised subtraction and sum operation, i.e. no Python loop over
+wavelengths. The predicted thickness is then argmin χ²(d) over the grid. The whole
+evaluation loop over the test set runs in under a minute.
+
+The solver is completely deterministic and has no tunable hyperparameters. It makes
+only one assumption beyond the forward model: that the material identity is known.
+In a real measurement scenario, the material is typically known from the process
+context. This assumption is shared with the ML models, which are also trained and
+tested with the material label as implicit context (through the stratified split).
+
+An important design note: the test samples fed to the analytical solver are taken
+from the same 20% test split used for the ML models. This guarantees a fair
+comparison, both the analytical and ML predictions are evaluated on the same set
+of (spectrum, true thickness) pairs, and neither method has seen those particular
+spectra during any training or lookup-table-construction phase. For the noise
+studies, the solver receives the noisy versions of the test spectra (from the
+corresponding noise dataset) for each of the five noise conditions.
+
+
+4.5 Evaluation Framework (Study 1 and Study 2)
+─────────────────────────────────────────────────
+
+The two parameter studies that form the core of the ML evaluation are both
+implemented within the main ML training script. They are designed as independent
+sweeps so that each one isolates a single design variable while holding everything
+else constant.
+
+Study 1: Wavelength Range Sweep. The full 501-point spectrum is progressively
+subsampled from 501 wavelengths down to 50 wavelengths, in steps of 5 (from 495
+downward), plus the endpoint at 501. This gives 91 distinct cases. At each case,
+the evenly-spaced wavelength selection described in Section 4.3 determines which
+columns of the feature matrix are used. All other parameters remain fixed: the
+same full dataset (305 samples), the same 80/20 stratified split, the same three
+models, and the same five seeds. The output of Study 1 is a curve of RMSE versus
+number of wavelength points for each model, showing how quickly accuracy degrades
+as spectral information is removed.
+
+The practical motivation is direct. A commercial spectroscopic ellipsometer
+measuring at 501 wavelengths is a significantly more expensive instrument than one
+measuring at, say, 100 wavelengths, because a wider spectral range requires either
+more detector pixels or a wider-bandwidth light source and optics. If the RMSE
+curve flattens out at some point below 501, it implies that a narrower-bandwidth
+instrument could deliver equivalent accuracy at lower cost. The wavelength sweep
+quantifies exactly where that plateau is.
+
+Study 2: Training Dataset Size Sweep. The number of distinct thickness values
+included in the training set is reduced from 61 down to 1, in steps of 1, giving
+61 distinct cases. At each step, the n_thick most densely-sampled thickness values
+are retained (the thick values closest to the set [20, 21, ..., 80] nm are selected
+using even spacing over the available range), and the feature matrix is reconstructed
+from the corresponding rows. The test set always comes from the same full 305-sample
+split, so the evaluation is always over the complete set of thicknesses even when
+training on a small subset.
+
+The degradation of accuracy as training data shrinks tells us the minimum number
+of calibration measurements needed to train a reliable model. This is relevant for
+practical deployment: generating training data experimentally is expensive, as each
+(material, thickness) training point requires depositing and characterising a real
+sample. If the model generalises well from 20 distinct thicknesses, the calibration
+burden is manageable. If it requires 50 or 60 distinct values, it may not be
+practical without automation.
+
+Total Computational Cost. Across both studies for a single noise condition:
+Study 1 requires 91 wavelength cases × 3 models × 5 seeds = 1,365 model fits.
+Study 2 requires 61 dataset-size cases × 3 models × 5 seeds = 915 model fits.
+The combined total is 2,280 model fits per noise condition. Adding the five noise
+conditions to the clean baseline gives a total of 6 × 2,280 = 13,680 model fits
+across the full experiment, plus the analytical solver runs and diagnostics.
+Despite this scale, the entire pipeline runs to completion in under an hour on a
+standard laptop, because each individual fit (particularly LR and RF on a dataset
+of 305 rows) takes milliseconds. The MLP training is the slowest step, but with
+early stopping and max_iter = 2,000, even the heaviest MLP fits converge quickly.
+
+
+4.6 Temperature Control System. Hardware Implementation
+──────────────────────────────────────────────────────────
+
+The temperature regulation subsystem described at the design level in Section 3.3 is
+realised in hardware using four main components: a PT100 platinum resistance
+thermometer, a MAX31865 precision RTD interface, a DHT22 ambient sensor, and a
+Keysight programmable DC power supply, all orchestrated by an Arduino Uno
+microcontroller. This section describes how these components are connected and how
+the control software maps the design equations onto embedded code running within the
+Arduino loop.
+
+4.6.1 Sensor Acquisition
+
+The PT100 is the primary measurement element. Its resistance changes by approximately
+0.385 Ω K^-1 from a nominal 100 Ω at 0 °C. Resolving millikelvin-level changes
+requires a front-end circuit with a stable excitation source and a high-resolution
+analogue-to-digital converter. The MAX31865 provides both: it drives the PT100
+with a precision current source, takes a ratiometric 15-bit measurement relative to
+a 430 Ω reference resistor, and delivers the result over a four-wire SPI bus. On
+the Arduino side, the SPI pins (MOSI, MISO, SCK) are connected to the MAX31865's
+corresponding SDI, SDO, CLK lines, with a dedicated chip-select pin driven low
+during each transaction. The Adafruit MAX31865 Arduino library is used to abstract
+the register-level SPI communication, each call to readRTD() returns a 16-bit
+value from which temperature is derived using the Callendar-Van Dusen linearisation
+that is standard for PT100 elements.
+
+The DHT22 uses a proprietary single-wire protocol. It is polled once per second,
+returning a 40-bit word that encodes relative humidity (10-bit, 0.1 % resolution)
+and temperature (10-bit, 0.1 K resolution). The primary purpose of this measurement
+in the control loop is to compute the dew-point temperature T_dew from the standard
+Magnus approximation and to generate a software interlock that prevents the setpoint
+from being driven below T_dew. This prevents condensation on the cold side of the
+Peltier module and on the sample, which would corrupt the ellipsometric measurement.
+
+4.6.2 Control Loop Execution
+
+The Arduino executes a timed interrupt-driven loop at 10 Hz. At each cycle the
+inner routine performs the following steps in order:
+
+  1. Read the PT100 temperature T(t) from the MAX31865 via SPI.
+  2. Poll the DHT22 (at its slower 1 Hz rate) and update the dew-point interlock.
+  3. Check the dew-point guard: if T_ref is within 1.0 K of the current dew-point
+     temperature T_dew (computed from the Magnus approximation applied to the
+     DHT22 readings), raise a warning flag and raise T_ref to T_dew + 1.0 K.
+  4. Compute the error signal
+          e(t) = T_ref − T(t)                                      ...(4.4)
+  5. Update the PID accumulator:
+          u(t) = K_p · e(t)  +  K_i · Σ e · Δt  +  K_d · Δe/Δt   ...(4.5)
+     where the integral is accumulated with one-sided anti-windup (frozen only
+     when u hits the lower saturation boundary of 0 V, not the upper one), and
+     the derivative is computed from the backward difference of successive readings.
+  6. Clamp u(t) to [0, u_max], the lower bound enforces the unidirectional
+     constraint. Negative commands are simply set to zero, allowing the stage to
+     warm passively through environmental heat flux.
+  7. Transmit the clamped voltage command to the Keysight supply over serial.
+  8. Log T(t), T_ref, T_dew, e(t), u(t), and the raw Keysight current and voltage
+     to the host PC over USB for post-hoc analysis.
+
+The loop rate of 10 Hz is chosen relative to the thermal time constant of the
+sample stage: a step response experiment showed that the cold-side PT100 has a
+first-order time constant of approximately 8 to 12 seconds depending on TEC current.
+The passive warming time constant, measured by cutting power entirely and logging
+the recovery curve, was approximately 40 to 60 seconds, confirming the asymmetric
+bandwidth described in Section 3.3.3. This four-to-six-fold asymmetry between
+cooling and warming speeds governs the PID gain selection and the depth of the
+tolerance band within which the system is considered settled.
+
+4.6.3 Start-up, Mode Transition, and Overshoot Management
+
+At power-on, the system enters an open-loop ramp phase. The Keysight supply voltage
+is incremented by a small fixed step every 500 ms until the PT100 reading falls
+within 0.5 K above T_ref, entering from above is the only valid approach direction
+given the cooling-only constraint. This ramp prevents integrator windup during the
+initial transient and reduces the risk of thermal shock to the TEC from a step
+command. The transition to closed-loop PID mode is logged with a timestamp, and
+the integrator is initialised to the current output value at the moment of handover
+to ensure a bump-free transition.
+
+Overshoot management is the most critical aspect of the unidirectional design. If
+the system overshoots downward, cools past T_ref, the only recovery mechanism is
+passive warming. In the worst case, with the stage temperature near the dew point,
+a downward overshoot of even 0.3 K could drop the cold-side below T_dew for 30 to
+50 seconds while the stage recovers passively. To prevent this, the PID derivative
+gain K_d is set high enough to detect the approaching-setpoint trajectory and begin
+reducing the cooling voltage before the setpoint is reached. The target design
+behaviour is a slightly underdamped approach that levels off 0.1–0.2 K above T_ref
+on the first pass, then settles in from above over one or two relaxation cycles —
+prioritising avoidance of undershoot over speed of convergence.
+
+During normal operation the Keysight monitor output is read back at 1 Hz. If the
+measured supply current exceeds the TEC module's rated peak current for more than
+two consecutive seconds, the system reverts to open-loop mode and issues a fault
+flag to the host PC. This guards against a condition where the PID tries to
+compensate for a failing heat sink by driving the TEC beyond its safe limits.
+
+4.6.4 Data Logging and Integration with Measurement Software
+
+The temperature log file, written by the Arduino to the host PC over USB serial, is
+a plain comma-separated record with columns for Unix timestamp, PT100 temperature,
+DHT22 ambient temperature, relative humidity, dew-point margin, PID output voltage,
+Keysight current, and operating mode (open-loop or closed-loop). This file is read
+back at the end of each ellipsometric measurement session and merged with the Ψ/Δ
+data on the shared timestamp axis. Any measurement interval in which the temperature
+deviated by more than ±0.1 K from T_ref is flagged in the merged dataset and
+excluded from analysis.
+
+The integration between the Arduino control loop and the ellipsometer acquisition
+software is passive: the two run independently on the same host PC, and their data
+streams are merged in post-processing. This avoids any possibility of the control
+software introducing latency or jitter into the optical data acquisition.
+
+================================================================================

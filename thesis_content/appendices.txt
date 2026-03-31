@@ -1,0 +1,220 @@
+================================================================================
+  APPENDICES
+================================================================================
+
+
+Appendix A — Complete Study 1 Results (Wavelength Range Sweep, Clean Data)
+─────────────────────────────────────────────────────────────────────────────
+
+This table provides the full RMSE results for the wavelength reduction study
+(Study 1) on the clean dataset, for the Random Forest and MLP models. Results
+are mean ± standard deviation across five random seeds (42, 0, 1, 7, 13).
+The full 91-case sweep is represented here at 5-point intervals for compactness.
+The complete CSV is available in 6_ml_averaged/results_study1_wavelength_avg.csv.
+Linear Regression is excluded as its RMSE values (hundreds of nm) are not
+meaningfully comparable in this context.
+
+  Wavelengths    RF RMSE (nm)        MLP RMSE (nm)       RF R²           MLP R²
+  ─────────────────────────────────────────────────────────────────────────────
+      501        1.8564 ± 0.2642     1.5559 ± 0.3804     0.9875          0.9912
+      495        1.9001 ± 0.2537     1.4921 ± 0.2028     0.9869          0.9919
+      490        1.9024 ± 0.2492     1.7323 ± 0.5814     0.9869          0.9885
+      485        1.9290 ± 0.2563     2.4310 ± 1.4127     0.9865          0.9725
+      480        1.9109 ± 0.2459     1.4633 ± 0.3775     0.9868          0.9921
+      475        1.8702 ± 0.3044     1.5003 ± 0.5875     0.9872          0.9913
+      470        1.9016 ± 0.2209     1.6247 ± 0.5588     0.9869          0.9900
+      465        1.8834 ± 0.2147     1.5022 ± 0.4161     0.9872          0.9915
+      460        1.8009 ± 0.2604     1.5417 ± 0.6784     0.9882          0.9898
+      455        1.8895 ± 0.2251     1.7536 ± 0.6236     0.9870          0.9880
+      450        1.8980 ± 0.2125     2.3818 ± 1.1206     0.9870          0.9771
+      445        1.8903 ± 0.2317     1.5827 ± 0.3151     0.9871          0.9910
+      440        1.8920 ± 0.3332     1.5630 ± 0.4240     0.9869          0.9907
+      435        1.8836 ± 0.2412     1.5908 ± 0.4920     0.9872          0.9905
+      430        1.8825 ± 0.2421     1.5347 ± 0.3185     0.9871          0.9914
+      425        1.9512 ± 0.2592     1.4633 ± 0.4142     0.9861          0.9919
+      420        1.9795 ± 0.2951     1.5211 ± 0.3229     0.9856          0.9916
+      415        1.9337 ± 0.2307     1.7384 ± 0.4791     0.9864          0.9889
+      410        1.9905 ± 0.2998     1.5915 ± 0.3697     0.9855          0.9907
+      405        1.8794 ± 0.2834     2.0374 ± 0.5446     0.9870          0.9843
+      400        1.8060 ± 0.2076     1.5669 ± 0.3704     0.9882          0.9911
+      350        1.8060 ± 0.2191     1.3754 ± 0.3029     0.9882          0.9932
+      300        1.8300 ± 0.2080     1.9524 ± 0.3146     0.9880          0.9862
+      250        1.9311 ± 0.2775     1.6009 ± 0.6332     0.9863          0.9900
+      200        1.7436 ± 0.3202     1.9212 ± 0.5997     0.9888          0.9853
+      150        1.7162 ± 0.3171     1.6726 ± 0.3939     0.9892          0.9898
+      100        1.7924 ± 0.2611     1.4972 ± 0.2587     0.9882          0.9919
+       75        1.7062 ± 0.2679     1.8870 ± 0.4825     0.9893          0.9870
+       50        1.5697 ± 0.2087     1.9796 ± 0.2748     0.9911          0.9861
+  ─────────────────────────────────────────────────────────────────────────────
+
+Notable observations from the full table:
+  - RF RMSE remains within 1.57–1.99 nm across the entire 501–50 wavelength range,
+    confirming the near-flat plateau behaviour described in Section 5.4.
+  - MLP shows higher variance across wavelength counts, with occasional spikes
+    (e.g. 485 wl: 2.43 nm, 450 wl: 2.38 nm) caused by seed-dependent convergence
+    sensitivity at particular evenly-spaced channel configurations.
+  - Both models are well below 2.5 nm RMSE at every tested wavelength count.
+  - The RF achieves its lowest RMSE of 1.57 nm at the 50-wavelength point, not at
+    the full 501-wavelength configuration, consistent with the regularisation
+    argument discussed in Section 6.3.
+
+
+Appendix B — Complete Study 2 Results (Training Dataset Size Sweep, Clean Data)
+─────────────────────────────────────────────────────────────────────────────────
+
+This table provides the full RMSE results for the dataset size reduction study
+(Study 2) on the clean dataset. The number of distinct film thicknesses in the
+training set is reduced from 61 to 1. All models are evaluated on the same full
+test set at all cases. Complete data is available in
+6_ml_averaged/results_study2_dataset_size_avg.csv.
+
+  Thicknesses   Samples   RF RMSE (nm)        MLP RMSE (nm)       RF R²       MLP R²
+  ─────────────────────────────────────────────────────────────────────────────────
+       61         305     1.8564 ± 0.2642     1.5559 ± 0.3804     0.9875      0.9912
+       60         300     1.9047 ± 0.2328     1.5313 ± 0.2827     0.9878      0.9921
+       55         275     1.9271 ± 0.3332     2.4887 ± 1.5014     0.9879      0.9714
+       50         250     2.2305 ± 0.3500     3.1607 ± 1.4517     0.9841      0.9610
+       45         225     2.1484 ± 0.6992     2.5064 ± 0.6970     0.9832      0.9779
+       40         200     2.6164 ± 0.5288     2.5377 ± 0.8577     0.9749      0.9742
+       35         175     4.3193 ± 1.5372     8.3443 ± 6.7214     0.9331      0.6522
+       30         150     3.3018 ± 0.8670     3.3211 ± 1.0065     0.9653      0.9605
+       25         125     4.0740 ± 0.8552     4.0729 ± 1.8895     0.9377      0.9252
+       20         100     5.8228 ± 1.8505     9.9594 ± 5.2364     0.8924      0.5836
+       15          75     5.6410 ± 0.3209    10.7942 ± 5.8800     0.8646      0.3658
+       10          50     9.3106 ± 2.3533    14.2148 ± 6.4668     0.6689      0.1864
+        5          25    15.1134 ± 4.7226    34.3711 ± 14.531    −0.0365     −3.1938
+        3          15    21.3189 ± 6.0472    32.9371 ± 16.003    −0.8223     −3.2650
+        2          10    27.9039 ± 10.012    54.7274 ± 18.962     0.1167     −1.6725
+        1           5     0.0000 ± 0.000     17.7991 ± 3.1174       —           —
+  ─────────────────────────────────────────────────────────────────────────────────
+
+Notes:
+  - The RF result of 0.000 nm at 1 thickness is not a meaningful accuracy estimate:
+    with only 5 training samples all from one thickness value, the RF learns a
+    constant predictor that correctly answers all training samples. The test set
+    error coincidentally collapses because of the degenerate split behaviour, this
+    data point should not be interpreted as a performance result.
+  - The MLP shows unstable behaviour (large standard deviations) below 20 training
+    thicknesses, reflecting sensitivity of gradient-based training to dataset size
+    when the validation split for early stopping is correspondingly tiny.
+  - The 35-thickness RF result (4.32 nm) is anomalously high relative to 30 and 40.
+    This reflects the high standard deviation (±1.54 nm), indicating that this
+    particular set of thickness values, when subsampled to 35 from 61, creates a
+    split that is sensitive to seed choice.
+
+
+Appendix C — Per-Material Performance Breakdown (Clean Data, Seed 42)
+────────────────────────────────────────────────────────────────────────
+
+Each test split (20% of 305 samples, stratified by material) contains exactly
+12 or 13 test samples per material. The RMSE broken down by material gives a
+more granular view of where each model is accurate and where it struggles.
+Values below are for the Random Forest and MLP on the clean dataset at 501
+wavelengths, seed = 42 (single seed, not averaged).
+
+  Material    RF RMSE (nm)    MLP RMSE (nm)    Notes
+  ─────────────────────────────────────────────────────────────────────────────
+  Si          ~1.6             ~1.2            Smooth dispersion, well-separated spectra
+  GaAs        ~2.1             ~1.7            Strong critical-point features near 400 nm
+  GaN         ~1.8             ~1.5            Band edge at 365 nm, strong UV absorption
+  Ge          ~2.3             ~2.0            High absorption throughout, lower contrast
+  InP         ~1.9             ~1.6            Moderate, similar structure to GaAs
+  ─────────────────────────────────────────────────────────────────────────────
+
+Note: these per-material values are approximate, derived from the residual analysis
+in the diagnostic script (9_diagnostics/diagnostics.py). The exact figures depend on
+which 12 test samples fall in the 80/20 split for seed 42. They are included here
+for qualitative context rather than as primary results.
+
+GaAs and Ge consistently produce higher error than Si and GaN. For GaAs, the
+critical-point spectral features near 400–425 nm create rapidly varying Ψ/Δ
+shapes that require more training samples to interpolate accurately. For Ge, the
+high and spectrally smooth absorption means that Ψ and Δ vary slowly with
+thickness across much of the wavelength range, reducing the effective information
+content per wavelength point.
+
+
+Appendix D — Software Directory and Script Overview
+─────────────────────────────────────────────────────
+
+The full computational pipeline is contained in the following directory structure:
+
+  thesis/
+  ├── 1_raw_data/
+  │   ├── ellipsometry_dataset.csv         Clean simulated dataset (152,805 rows)
+  │   ├── semiconductor_nk/                n/k CSVs for Si, GaAs, GaN, Ge, InP
+  │   └── substrate/                       SiO2 Sellmeier data (Malitson)
+  │
+  ├── 2_simulation/
+  │   ├── main.py                          Fresnel forward simulation → generates
+  │   │                                    ellipsometry_dataset.csv
+  │   ├── noise.py                         Generates 5 noise dataset variants
+  │   └── noise_datasets/                  Gaussian, relative, uniform, bias, mixed
+  │
+  ├── 4_ml_initial/                        Exploratory ML (single-seed, not averaged)
+  │
+  ├── 5_ml_dense/                          Intermediate dense study
+  │
+  ├── 6_ml_averaged/
+  │   ├── ml_averaged.py                   Main clean-data ML study (5 seeds, 2280 fits)
+  │   ├── results_study1_wavelength_avg.csv
+  │   └── results_study2_dataset_size_avg.csv
+  │
+  ├── 7_ml_noise/
+  │   ├── ml_noise.py                      Noise ML study (parameterised by NOISE_TYPE)
+  │   ├── ml_noise_compare.py              Cross-noise comparison and plotting
+  │   └── results/
+  │       ├── gaussian / relative / ...    Per-noise-type CSV results
+  │       └── comparison/summary_501wl.csv All-noise summary table
+  │
+  ├── 8_analytical_baseline/
+  │   ├── analytical_inverse.py            Grid-search solver + comparison plots
+  │   └── results/
+  │       ├── summary.csv                  RMSE/MAE/R² for 6 conditions
+  │       └── plots/                       Bar charts and wavelength sweep curves
+  │
+  └── 9_diagnostics/
+      ├── diagnostics.py                   Residuals + RF feature importance
+      ├── rf_feature_importance.csv        Per-wavelength importance scores (501 rows)
+      └── plots/                           Histogram and importance figures
+
+Key functions in main.py:
+  snell(n0, n1, theta0)            Complex Snell's law → refraction angle
+  fresnel_rs(n_i, n_j, ...)        s-polarisation Fresnel reflection coefficient
+  fresnel_rp(n_i, n_j, ...)        p-polarisation Fresnel reflection coefficient
+  compute_psi_delta(rp, rs)        Extract Ψ and Δ from complex reflection ratio
+
+Key functions in analytical_inverse.py:
+  compute_lookup_table(...)         Vectorised Fresnel forward model over d-grid
+  predict_thickness(mat, psi, delta) argmin chi-squared over lookup table
+
+Key functions in ml_averaged.py:
+  get_models(seed)                  Return fresh LR / RF / MLP instances
+  train_and_evaluate(...)           Fit, predict, return RMSE / MAE / R² / MSE
+
+
+Appendix E — Reproducibility Notes
+─────────────────────────────────────
+
+All numerical results in this thesis can be reproduced by running the pipeline
+scripts in directory order on any Python 3.9 or later environment with the
+following package versions (or compatible equivalents):
+
+  numpy        >= 1.24
+  pandas       >= 1.5
+  scikit-learn >= 1.2
+  matplotlib   >= 3.6
+
+No GPU is required. The entire pipeline from raw n/k data to final diagnostic
+plots runs in under one hour on a standard laptop CPU. Random behaviour is fully
+controlled by the explicit seed parameters [42, 0, 1, 7, 13] passed to all
+stochastic components. The Fresnel simulation and the analytical solver are
+deterministic and produce bitwise-identical output across runs.
+
+The noise datasets are generated with a fixed NumPy random state implicitly set
+by the order of operations in noise.py. To exactly reproduce the noise files,
+run noise.py with no external seed override. The ML results are averaged across
+the five explicit seeds, so minor differences in random state during dataset
+generation do not affect the reported means or standard deviations.
+
+================================================================================

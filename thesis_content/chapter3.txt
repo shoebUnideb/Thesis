@@ -1,0 +1,494 @@
+================================================================================
+  CHAPTER 3 — SYSTEM DESIGN
+================================================================================
+
+
+3.1 Overall System Architecture
+─────────────────────────────────
+
+Before describing any individual component, it is useful to see the system as a
+whole. The work presented in this thesis sits at the intersection of two domains:
+optical measurement physics and data-driven machine learning. Designing a system
+that spans both requires making deliberate choices at every stage, from the choice
+of angle of incidence to the number of neurons in a hidden layer, and those choices
+interact with each other in ways that are not always obvious at first glance. This
+section maps out the full architecture so that individual design decisions in the
+sections that follow can be understood in context.
+
+The system has four main functional blocks. The first is the measurement front-end:
+a spectroscopic ellipsometer that illuminates a semiconductor thin-film sample at a
+fixed angle of incidence and records the polarisation change across a wavelength
+range. This produces a pair of spectra, Ψ(λ) and Δ(λ), that encode the optical
+properties and thickness of the film. The second block is the noise injection
+layer, which is unique to this study. Because the work is carried out on synthetic
+data, the measurement noise that a real instrument would introduce must be
+explicitly modelled and added to the clean simulated spectra. Five noise models are
+implemented, corresponding to physically motivated categories of instrument error.
+The third block is the inversion layer, where either a machine learning model or a
+physics-based analytical solver takes the (possibly noisy) spectrum as input and
+produces a film thickness estimate as output. The fourth block is the evaluation
+layer, where accuracy metrics are computed, aggregated across seeds and conditions,
+and organised for analysis.
+
+[FIGURE 3.1: Block diagram of the full system architecture. Draw four horizontally
+connected blocks: (1) Optical Measurement Front-End showing SE instrument with
+arrow labelled Ψ(λ), Δ(λ), (2) Noise Injection showing the five noise types as
+bullet points flowing into the spectra, (3) Inversion Layer showing two parallel
+paths, one for ML models (LR / RF / MLP) and one for the Analytical Grid-Search
+Solver, (4) Evaluation showing RMSE, MAE, R² and the Study 1 / Study 2 arrows.
+Include a feedback arrow from Evaluation back to Design for the wavelength sweep.]
+
+The data flows in one direction: from simulation to evaluation. There is no active
+feedback loop in the sense of iterative model updates in production, but there is
+a study-level feedback in the experimental design: the results of Study 1 (wavelength
+range sweep) directly inform whether a reduced-wavelength instrument could be built
+without meaningful loss of accuracy. That connection between measurement system
+design and ML outcome is one of the defining features of this work.
+
+
+3.2 Optical Measurement System
+────────────────────────────────
+
+A spectroscopic ellipsometer operates by measuring the change in polarisation state
+of light reflected from a surface. The basic hardware consists of five components:
+a broadband light source, a polariser, the sample stage, an analyser, and a
+detector. In the rotating-analyser configuration used as the reference in this work,
+the polariser is fixed and the analyser rotates, sampling the reflected polarisation
+state over a full rotation cycle. The raw signal is a sinusoidal intensity variation
+as a function of analyser angle, from which the ellipsometric parameters Ψ and Δ
+are extracted analytically. Modern commercial instruments digitise this at every
+wavelength simultaneously using a charge-coupled device (CCD) or photodiode array,
+so a full spectrum is acquired in seconds.
+
+The angle of incidence is set to 70 degrees from the surface normal throughout this
+work. This is not an arbitrary choice. For most semiconductors and dielectric films
+in the 300–800 nm range, the Brewster angle falls somewhere between 65 and 75
+degrees. Operating near the Brewster angle maximises the ellipsometric contrast —
+that is, the sensitivity of Ψ and Δ to changes in film thickness and optical
+constants, because the p-component reflection coefficient r_p passes through or
+near zero in that region, amplifying the phase term Δ. At normal incidence, by
+contrast, both polarisation components reflect almost identically, Δ approaches
+zero or 180 degrees, and the measurement yields little useful information about the
+film. The 70-degree configuration is therefore the standard engineering trade-off
+between sensitivity and practical accessibility of the sample.
+
+The wavelength range covered is 300 to 800 nm, sampled at every integer nanometre,
+giving 501 spectral points per measurement. This range was chosen to include the
+near-UV region where most of the semiconductor materials studied here are strongly
+absorbing (large k), as well as the visible and near-IR regions where absorption
+drops and transparency increases. The full 501-point spectrum is used as the feature
+vector for machine learning. Study 1, described in Chapter 4, will progressively
+reduce this range to examine how much spectral content is actually needed for
+accurate inversion.
+
+The sample in this work is a semiconductor thin film on an SiO₂ substrate. The
+substrate is optically thick, far thicker than the coherence length of the light
+source, so back-surface reflections do not contribute to the measurement and the
+three-layer air/film/substrate model applies without modification. Film thicknesses
+range from 20 to 80 nm. Below 20 nm, the films become thin enough that surface
+roughness and interface contributions would need additional modelling. Above 80 nm,
+the spectra start to show rapidly oscillating interference fringes that complicate
+the regression problem without adding methodological insight. The 20 to 80 nm range
+is typical for gate oxides, passivation layers, and anti-reflection coatings on
+process-monitor wafers.
+
+
+3.3 Temperature Control System (Peltier Module)
+─────────────────────────────────────────────────
+
+3.3.1 Peltier Module and Actuator Hardware
+
+Thermal stability of the sample stage is a practical requirement that is often
+treated as secondary in simulation-focused studies but becomes critical the moment
+real hardware enters the measurement chain. As noted in Section 2.6, the refractive
+indices of semiconductors shift by approximately 1 to 2 × 10^-4 K^-1 in the visible
+range for silicon, and somewhat more for direct-gap materials such as GaAs and GaN
+near their band edges. Over a measurement dwell time of one to two minutes in an
+uncontrolled laboratory environment, ambient temperature drifts of 1 to 2 K are
+routine, and the resulting shift in optical constants translates into a systematic
+thickness error of one nanometre or more. That is not a tolerable contribution when
+the target accuracy of the ML models in this work is in the 1.5 to 2 nm range.
+
+Existing thermoelectric temperature control systems in the literature predominantly
+rely on bidirectional current, which allows the TEC to both heat and cool the
+controlled surface symmetrically. This bidirectional capability simplifies PID
+tuning considerably: if the controller overshoots the setpoint in one direction, it
+can immediately apply current in the opposite direction to correct. The system
+designed in this work deliberately departs from that convention. For reasons of
+cost, electrical simplicity, and the constraints of the chosen Keysight DC supply
+operating in a single-polarity mode, the TEC is driven unidirectionally, cooling
+only. The current can be reduced to zero, allowing the stage to passively warm via
+environmental heat load, but it cannot be reversed to actively heat.
+
+This constraint introduces three control challenges that have received little
+attention in the literature for optical metrology applications. First, the response
+is asymmetric: cooling is fast (a TEC removes heat actively) but warming is slow
+(the stage must rely on ambient heat flux through the thermal interface). Second,
+overshoot below the setpoint cannot be corrected by active heating, so any
+downward overshoot must be recovered passively and is limited in recovery speed by
+the thermal mass of the stage and the ambient temperature margin. Third, the system
+is operated close to the dew point, a regime that conventional bidirectional TEC
+systems avoid, which means the overshoot risk carries a direct measurement
+consequence: a cold-side temperature that dips below the dew point even briefly
+induces condensation on the sample surface, corrupting the ellipsometric measurement
+irrecoverably for that cycle.
+
+Addressing all three challenges within a low-cost, microcontroller-based
+implementation is the central engineering contribution of the temperature control
+subsystem in this thesis. The solution strategy, detailed in Section 3.3.3 and
+Section 4.6, combines a conservative open-loop ramp phase, asymmetry-aware PID
+tuning, integrator anti-windup specifically configured for one-sided saturation,
+and a dew-point interlock that enforces a hard lower bound on the control signal.
+
+The actuator is a Peltier thermoelectric cooler (TEC) module. A TEC is a solid-state
+heat pump with no moving parts: when a direct current flows across junctions of
+dissimilar conductive materials, the Peltier effect transports heat from one face
+of the device (the cold side) to the opposite face (the hot side). The thermal power
+balance at the cold side is
+
+      Q_c = α · T_c · I  −  (1/2) · I² · R  −  K · ΔT            ...(3.1)
+
+where α is the Seebeck coefficient of the thermoelectric material, I is the applied
+current, R is the module's electrical resistance, K is the thermal conductance
+between the two faces, and ΔT = T_h − T_c is the temperature difference across the
+module. The first term represents Peltier cooling, the second Joule heating within
+the module itself, and the third the parasitic back-conduction of heat from the hot
+side to the cold side. In practical terms, equation (3.1) sets the operating limits:
+for a given cold-side target temperature there is a maximum current beyond which
+Joule heating dominates and the cold side actually warms up.
+
+Electrical actuation of the Peltier module is provided by a Keysight programmable
+DC power supply, which allows precise, software-controlled adjustment of the applied
+voltage and current. The supply communicates with the control computer via a standard
+interface, enabling the control algorithm to update the setpoint in real time and to
+log the instantaneous voltage and current alongside the temperature data. Using a
+bench-grade power supply rather than a custom H-bridge driver eliminates a significant
+source of electrical noise that would otherwise couple into the measurement electronics
+through the shared ground plane.
+
+3.3.2 Sensing Instrumentation
+
+Two complementary sensing strategies are employed to monitor the thermal state of
+the system. The primary measurement of sample-stage temperature is performed by a
+PT100 platinum resistance thermometer embedded in the sample holder directly above
+the cold side of the TEC. PT100 sensors exhibit a well-characterised and nearly
+linear resistance-temperature relationship, with a nominal resistance of 100 Ω at
+0 °C and a sensitivity of approximately 0.385 Ω K^-1. The resolution achievable
+with a PT100 read through a precision interface is in the millikelvin range, which
+far exceeds the ±0.1 K stability target set for this system.
+
+Interfacing a PT100 to a microcontroller requires an amplified resistance measurement
+front end. The MAX31865 RTD-to-digital converter is used here. This integrated
+circuit drives the sensor with a precision current source, measures the resulting
+voltage across the PT100 using a 15-bit analogue-to-digital converter, and
+communicates the result to the host microcontroller via a four-wire SPI bus. The
+MAX31865 handles the reference resistance ratio internally, reducing the sensitivity
+to cable resistance errors that would otherwise corrupt a simple voltage-divider
+measurement, an important consideration since the sensor wiring runs close to the
+optical stage and must be screened.
+
+Secondary environmental monitoring is provided by a DHT22 combined temperature and
+relative humidity sensor mounted away from the sample stage but within the instrument
+enclosure. The DHT22 measures ambient air conditions at a stated accuracy of ±0.5 K
+in temperature and ±2–5 % in relative humidity. Its primary function in this system
+is not to control temperature but to flag conditions near the dew point. If the
+surface temperature of the cold side falls below the local dew point, condensation
+on the sample or on optical windows alters the measured Ψ and Δ immediately and
+irreversibly for that measurement cycle. The DHT22 reading is therefore used as an
+interlock: closed-loop temperature setpoints below the current dew-point temperature,
+computed from the DHT22 readings, are rejected by the control software with a warning.
+
+The Arduino Uno microcontroller board serves as the central interface hub. It reads
+the PT100 temperature via SPI from the MAX31865, polls the DHT22 over its single-wire
+protocol, executes the PID control algorithm in the main loop, and sends the
+computed control signal as a setpoint word to the Keysight supply over serial. The
+loop runs at approximately 10 Hz, which is well above the thermal bandwidth of the
+sample stage (time constant of several seconds) and therefore does not introduce
+any aliasing or latency-related instability.
+
+3.3.3 PID Control Architecture
+
+The control objective is to drive the error signal
+
+      e(t) = T_ref − T(t)                                           ...(3.2)
+
+to zero, where T_ref is the desired setpoint and T(t) is the PT100 reading at time t.
+The control action, expressed as the voltage command u(t) sent to the Keysight
+power supply, is computed using a standard PID formulation
+
+      u(t) = K_p · e(t)  +  K_i · ∫₀ᵗ e(τ) dτ  +  K_d · de(t)/dt  ...(3.3)
+
+The proportional term K_p · e(t) provides an immediate response proportional to the
+present deviation. It drives the system toward the setpoint quickly but, on its own,
+leaves a residual steady-state error for any finite load. The integral term
+K_i · ∫e dt accumulates the history of the error and eliminates this steady-state
+offset. It also compensates for slow environmental disturbances such as a gradual
+rise in ambient temperature during a long measurement session. The derivative term
+K_d · de/dt reacts to the rate of change of error, damping oscillations that would
+otherwise occur if the proportional gain alone were increased to achieve faster
+settling.
+
+The unidirectional constraint changes the practical interpretation of equation (3.3)
+fundamentally. In a bidirectional system, u(t) can be positive or negative and the
+physical plant responds to both. Here, u(t) is effectively lower-bounded at zero:
+when the controller computes a positive command (i.e. heat is needed), the only
+option is to reduce the cooling current and wait for the ambient heat flux to warm
+the stage. The positive half of the u(t) axis is therefore the slow, passive regime,
+and the negative half is the fast, active cooling regime. This creates an intrinsic
+asymmetry in closed-loop bandwidth: the cooling time constant is set by TEC
+performance (order of seconds), while the warming time constant is set by the thermal
+mass of the stage divided by the passive heat flux from the environment (order of
+tens of seconds or more, depending on ambient conditions).
+
+The PID gains are tuned to account for this asymmetry. The proportional gain K_p is
+deliberately kept moderate to limit the depth of downward overshoot. Since the system
+cannot actively recover from a cold overshoot near the dew point, a conservative K_p
+that accepts slightly slower approach in exchange for shallower undershoot is
+preferable to an aggressive gain that cools quickly but risks condensation. The
+derivative term plays a correspondingly larger role: K_d is increased relative to a
+standard symmetric system, so that the deceleration of the cooling rate is initiated
+early and the cold-side temperature approaches T_ref with a low net velocity.
+
+In the implemented system, saturation limits are imposed on u(t). The Keysight
+supply voltage is clamped to a safe operating range for the chosen TEC module,
+preventing excessive current that would shift the operating point into the Joule-
+heating-dominated regime described by equation (3.1). Anti-windup logic is applied
+to the integrator with a one-sided asymmetric scheme: the integrator is frozen only
+when the output saturates at the lower bound (zero volts), not at the upper bound.
+This prevents the integrator from accumulating a large positive value during a
+passive warming phase, which would cause the system to over-cool aggressively once
+cooling is re-engaged, creating repeated undershoot cycles near the dew point.
+
+Start-up is handled by a two-phase strategy. During the initial open-loop phase,
+the supply voltage is ramped up incrementally to bring the cold-side temperature
+close to the setpoint without overshooting. Once the PT100 reading enters a
+tolerance band of ±0.5 K above T_ref (strictly from above, given the cooling-only
+constraint), the Arduino switches to closed-loop PID operation. This hybrid strategy
+reduces settling time and avoids the integrator windup that would accumulate during
+the ramp-up phase if the integrator were active from the start.
+
+3.3.4 Measurement Stability and Thermo-Optic Effects
+
+The design target for the closed-loop system is temperature stability within ±0.1 K
+over the duration of a single ellipsometric sweep. To understand why this is the
+right specification, consider the two dominant pathways through which temperature
+affects the measured Ψ and Δ: refractive index variation and thermal expansion.
+
+The refractive index of an optical material depends on temperature through the
+thermo-optic coefficient dn/dT. To first order,
+
+      n(T) = n_0 + (dn/dT) · (T − T_0)                            ...(3.4)
+
+where n_0 is the index at reference temperature T_0. For silicon in the near-visible
+range, dn/dT ≈ 1.8 × 10^-4 K^-1. A temperature excursion of ±0.1 K therefore shifts
+n by ±1.8 × 10^-5, a change that is sub-dominant to the other noise contributions
+characterised in Chapter 4 of this work. For GaAs and GaN near their band edges the
+thermo-optic coefficients are larger, typically (2–4) × 10^-4 K^-1, but the ±0.1 K
+target still keeps the resulting index error at or below 4 × 10^-5, which remains
+tolerable.
+
+The second pathway is thermal expansion. A temperature change ΔT modifies the
+physical film thickness according to
+
+      Δd = α_T · d · (T − T_0)                                     ...(3.5)
+
+where α_T is the linear coefficient of thermal expansion of the film. For a 50 nm
+silicon film with α_T ≈ 2.6 × 10^-6 K^-1, a 1 K change produces a thickness shift
+of only 0.00013 nm, which is entirely negligible. Thermal expansion therefore
+contributes less than the refractive index pathway by several orders of magnitude,
+and the ±0.1 K specification is driven entirely by the optical-constant requirement.
+
+The DHT22-based dew-point interlock adds a further layer of protection. In a
+laboratory environment where the cold-side setpoint may approach 15–18 °C during
+testing, the dew-point margin can become small on humid days. A condensation event
+would cause an apparent spike in Δ of tens of degrees, an obvious outlier, but one
+that could corrupt a batch measurement without a software guard.
+
+3.3.5 System Integration
+
+Mechanically, the TEC sits beneath the sample holder on the ellipsometer stage. The
+cold side is in thermal contact with the underside of the sample holder through a
+thin layer of thermal interface material, and the hot side is pressed against an
+aluminium heat sink fitted with a small brushless fan. The PT100 sensor, connected
+to the MAX31865, is embedded in a small pocket milled into the edge of the sample
+holder, placing it within 5 mm of the sample position. The DHT22 is fixed to the
+inside of the enclosure wall, measuring ambient air rather than the stage itself.
+
+The Arduino Uno is mounted externally, connected by a short USB cable for serial
+communication with the control PC. The MAX31865 is wired to the Arduino SPI pins
+(MOSI, MISO, SCK, CS). The DHT22 uses a single data wire connected to a digital
+input with a pull-up resistor. All low-level sensor wiring is screened and routed
+away from the optical path to avoid stray light and electromagnetic interference
+with the ellipsometer detector chain.
+
+[FIGURE 3.2: Block diagram and photograph of the temperature control subsystem.
+Left: block diagram showing the PT100 → MAX31865 → Arduino Uno → Keysight supply →
+TEC → sample stage feedback loop, with the DHT22 dew-point interlock path. Right:
+photograph of the assembled stage with components labelled.]
+
+The temperature control subsystem is passive with respect to the optical measurement:
+it neither modifies the illumination geometry nor introduces any optical element into
+the beam path. Its sole function is to hold the sample at a stable, known temperature
+throughout the measurement sweep. The setpoint used for all ellipsometric
+measurements reported in this thesis is 20.0 °C, chosen to match the calibration
+reference temperature of the n/k datasets used in the Fresnel simulation.
+
+
+3.4 Selection of Semiconductor Materials and Substrate
+────────────────────────────────────────────────────────
+
+The choice of which semiconductor materials to include determines the breadth of
+the training problem. A model trained only on silicon is a silicon-specific tool.
+A model trained across five materials with very different optical properties is a
+general-purpose inversion engine, but it also faces a harder regression problem
+because the input space is far more varied.
+
+Five materials were selected: silicon (Si), gallium arsenide (GaAs), gallium nitride
+(GaN), germanium (Ge), and indium phosphide (InP). The selection was guided by
+three criteria: technological relevance, optical diversity, and availability of
+well-characterised experimental optical constants.
+
+Silicon is the foundation of the microelectronics industry and the most widely
+measured semiconductor in ellipsometric studies. It is indirect-bandgap with
+moderate absorption in the visible. Its optical constants are tabulated with high
+accuracy by Green (2008) [2], who provides values at room temperature from multiple
+experimental techniques. Including silicon is non-negotiable.
+
+Germanium is a group-IV semiconductor like silicon but with a substantially smaller
+bandgap (0.67 eV versus 1.12 eV for Si at room temperature). This means Ge absorbs
+strongly across the entire 300–800 nm range, including the near-IR, and its k values
+are large throughout. The Ψ and Δ spectra of a Ge film look qualitatively different
+from silicon, which tests whether a single ML model can handle both cases. Optical
+constants follow Aspnes and Studna (1983) [1].
+
+Gallium arsenide is the most important III-V compound semiconductor for photonics
+and high-frequency electronics. Its direct bandgap at 1.42 eV places its band edge
+at about 870 nm, just outside our wavelength range, so the material is strongly
+absorbing below about 870 nm and transparent above. Within the 300–800 nm window,
+GaAs shows a rich spectral structure with strong critical-point features near 3 eV
+(~413 nm) and 4.5 eV (~275 nm). These features produce sharp, structured variation
+in n and k that is very different from the smoother behaviour of silicon. This
+spectral richness makes GaAs a challenging and informative test case.
+
+Indium phosphide has a direct bandgap at 1.35 eV, placing it slightly below GaAs
+in energy. Its optical properties are somewhat smoother than GaAs in the visible
+range, making it a useful intermediate case. InP is the substrate material of
+choice for long-wavelength (1.3–1.55 µm) photonic integrated circuits, and thin-
+film characterisation of epilayers on InP substrates is a routine industrial problem
+[24]. Optical constants follow Aspnes and Studna (1983) [1].
+
+Gallium nitride is a wide-bandgap semiconductor (3.4 eV, corresponding to about
+365 nm) used in blue and UV LEDs, high-power RF transistors, and power electronics
+[3]. Because its bandgap falls within the 300–800 nm window, the material transitions
+from strongly absorbing at short wavelengths (near its band edge) to relatively
+transparent at longer wavelengths. This transparency-to-absorption transition produces
+distinctive spectral features in both n and k that no other material in this set
+replicates. GaN optical constants are taken from Kawashima et al. (1997) [3] via
+the Polyanskiy database [5].
+
+The substrate throughout is thermally grown silicon dioxide (SiO₂). SiO₂ is
+transparent across the entire 300–800 nm range and well-characterised. Its refractive
+index was modelled using the Sellmeier equation with Malitson (1965) [4] coefficients.
+As a substrate material, SiO₂ is also broadly representative of process-monitor wafers
+used in real semiconductor manufacturing, where thin films are routinely deposited
+on oxide layers for electrical isolation purposes.
+
+Together, these five materials span a wide range of optical properties: from Ge with
+strong, smooth absorption across the full window, through Si and GaAs with structured
+features in the visible, to the near-transparent GaN and InP at long wavelengths.
+This diversity is intentional. A machine learning model that can predict thickness
+accurately across all five simultaneously, with a single set of weights and a single
+training procedure, is far more general and practically useful than five separate
+single-material models.
+
+
+3.5 Selection of Machine Learning Models
+──────────────────────────────────────────
+
+Three models were selected to represent a deliberate range of complexity and
+interpretability: Linear Regression, Random Forest Regression, and a Multilayer
+Perceptron neural network. The selection was not motivated by a prior preference for
+any particular approach but by the scientific question the comparison is meant to
+answer.
+
+Linear Regression was included precisely because it is expected to fail. With 1,002
+input features (Ψ and Δ at 501 wavelengths each) and only around 244 training samples
+in the smallest dataset size cases, the problem is grossly underdetermined. A linear
+model cannot meaningfully fit in this regime without regularisation, and none is
+applied here, so the results represent a genuine lower bound on regression performance.
+This is useful information: it quantifies how much is gained by moving to a nonlinear
+model. Without this baseline, the Random Forest and MLP results have less context.
+
+Random Forest was chosen for two reasons: predictive performance and interpretability.
+Ensemble averaging across 100 trees reduces variance substantially compared to any
+single decision tree, and the model generalises well in high-dimensional input spaces
+with relatively few training samples, which is precisely the regime this study occupies
+in its smaller dataset conditions [21][22]. The second reason is the Gini feature
+importance score, which provides a direct, wavelength-resolved measure of which
+spectral channels contribute most to the thickness prediction. This is not available
+from the MLP in any convenient form, and it turns out to be one of the most
+physically informative results in the entire study.
+
+The Multilayer Perceptron is the representationally most powerful of the three. With
+three hidden layers of 256, 128, and 64 neurons and ReLU activations, the network
+can approximate highly nonlinear functions and, in principle, learn the full
+complexity of the mapping from a 1,002-dimensional spectrum to a single thickness
+value. The architecture was chosen based on preliminary experiments that showed
+this configuration converges reliably and does not overfit badly with the dataset
+sizes used here, particularly when combined with a validation split for early stopping.
+More complex architectures, such as convolutional networks treating the spectrum as
+a one-dimensional signal, were deliberately not used: the goal was not to achieve
+the maximum possible accuracy, but to study how a representative neural network
+performs relative to classical methods under the study conditions.
+
+The deliberate choice to keep all three models in their standard scikit-learn
+implementations, without specialised hyperparameter tuning per condition, is also
+worth noting. Tuning each model for each noise type and wavelength range would
+produce better numbers but would make the study design far more complex and the
+results harder to interpret. Holding the model configurations fixed allows clean
+attribution: differences in performance across conditions are due to the conditions,
+not to the models being better or worse tuned.
+
+
+3.6 Software and Data Processing Pipeline
+───────────────────────────────────────────
+
+The entire computational pipeline is implemented in Python 3, using standard
+scientific computing libraries throughout. NumPy handles all array operations and
+complex arithmetic for the Fresnel simulations. Pandas organises the dataset as a
+wide-format DataFrame, with one row per (material, thickness) combination and 1,002
+feature columns. Scikit-learn (version 1.x) provides all three ML models, the
+train/test split, preprocessing, and metric computation. Matplotlib generates all
+figures.
+
+The pipeline proceeds in a fixed sequence. First, the forward simulation runs for
+all five materials across all thickness values and all 501 wavelengths, producing the
+clean dataset. This takes a few seconds on a modern laptop. Second, the five noise
+datasets are generated from the clean dataset by applying the noise functions
+described in Section 4.2. Each noise dataset has exactly the same structure as the
+clean dataset and is saved independently as a CSV file. Third, the ML studies run:
+for each combination of (noise type, wavelength range, dataset size, seed), a model
+is trained and evaluated, and the metrics are stored. Fourth, the analytical solver
+runs independently on each condition, with no training phase, directly minimising
+the chi-squared cost function for each test spectrum. Fifth, diagnostics are
+computed: residual distributions and feature importance scores for the clean-data
+case.
+
+Data are not normalised before being written to the CSV files. Input feature
+standardisation (zero mean, unit variance) is applied internally within the MLP
+preprocessing step only, so it is always computed from the training split and applied
+to both train and test without leakage. The Random Forest and Linear Regression
+models receive raw feature values, which is appropriate since neither is
+distance-sensitive in the same way as gradient-based methods.
+
+The software components are organised into numbered directories corresponding to
+the thesis chapters: 2_simulation for the forward model and noise generation,
+4_ml_initial and subsequent folders for the ML studies, 8_analytical_baseline for
+the grid-search solver, and 9_diagnostics for the post-hoc analyses. Each directory
+is a self-contained Python script that reads its input data from a fixed relative
+path and writes its outputs to a results subdirectory. Running the pipeline from
+scratch requires executing the scripts in directory order. The entire study, from
+simulation to final diagnostics, completes in under an hour on a standard laptop
+CPU, with the Random Forest studies being the most computationally intensive step.
+
+================================================================================

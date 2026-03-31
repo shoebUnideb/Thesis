@@ -1,0 +1,16 @@
+n_thicknesses,total_samples,model,RMSE,MAE
+61,305,Linear Regression,134.1717,89.3372
+61,305,Random Forest,1.8088,1.1987
+61,305,MLP,1.2775,0.9148
+50,250,Linear Regression,211.5569,117.9906
+50,250,Random Forest,2.1766,1.4534
+50,250,MLP,3.7445,2.6953
+40,200,Linear Regression,26.1734,18.0564
+40,200,Random Forest,3.2182,2.0022
+40,200,MLP,3.9678,3.2354
+25,125,Linear Regression,50.2376,34.7218
+25,125,Random Forest,3.6825,2.6652
+25,125,MLP,6.8692,5.7755
+10,50,Linear Regression,14.9134,12.4858
+10,50,Random Forest,10.4272,7.823
+10,50,MLP,10.8131,8.202

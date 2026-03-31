@@ -1,0 +1,352 @@
+================================================================================
+  CHAPTER 5 — RESULTS: COMPARISON OF SYSTEM PERFORMANCE
+================================================================================
+
+
+5.1 ML Performance on Clean Data
+──────────────────────────────────
+
+The starting point for all comparisons is the performance of the three machine
+learning models on the clean, noise-free dataset. This establishes what is
+achievable under ideal conditions and provides the reference against which all
+subsequent noise and parameter-sweep results are interpreted. Table 5.1 summarises
+the mean RMSE, MAE, and R² across five random seeds at the full 501-wavelength
+configuration.
+
+      TABLE 5.1. Clean-data ML performance at 501 wavelengths (mean ± std, 5 seeds)
+      ─────────────────────────────────────────────────────────────────────────────
+      Model              RMSE (nm)          MAE (nm)           R²
+      ─────────────────────────────────────────────────────────────────────────────
+      Linear Regression  161.21 ± 47.65     105.25 ± 35.81    −102.20 ± 74.37
+      Random Forest        1.86 ± 0.26        1.17 ± 0.11       0.9875 ± 0.0038
+      MLP                  1.56 ± 0.38        1.04 ± 0.18       0.9912 ± 0.0037
+      ─────────────────────────────────────────────────────────────────────────────
+
+The Linear Regression result is, as anticipated, catastrophically poor. An RMSE of
+161 nm on a thickness range of only 60 nm (20 to 80 nm) means the model is predicting
+values far outside the physical range of the training data. The R² of −102 is not
+a typo: a negative R² means the model performs worse than simply predicting the mean
+thickness for every sample, which is the baseline a constant predictor achieves.
+This is a direct consequence of the underdetermined problem setup, with 1,002 features
+and roughly 244 training samples, and is entirely expected. The large standard
+deviation across seeds (±47.65 nm) reflects the fact that small changes in the
+particular training subset cause large swings in the weight vector, which is the
+hallmark of an unstable, unconstrained least-squares solution.
+
+The Random Forest achieves a mean RMSE of 1.86 ± 0.26 nm and an R² of 0.9875. The
+MLP does slightly better: 1.56 ± 0.38 nm and R² = 0.9912. These are strong results.
+To put the numbers in context, the training target range spans 60 nm and the achieved
+RMSE is under 2 nm, a relative error of around 3%. For the MLP, the prediction
+error is on average just over one nanometre in absolute terms (MAE = 1.04 nm). The
+standard deviation across seeds is small relative to the mean for both models (0.26
+and 0.38 nm respectively), confirming that these numbers are stable and not the
+result of a particularly lucky random split.
+
+The modest advantage of MLP over RF (0.30 nm RMSE difference) is consistent with
+the expectation that a neural network captures more of the nonlinear structure of
+the mapping from spectrum to thickness. However, the difference is not large enough
+to draw strong conclusions from the clean-data results alone. The more informative
+comparison occurs under noise conditions, discussed in Section 5.2.
+
+[FIGURE 5.1: Scatter plot of predicted versus true thickness (nm) for RF and MLP
+on the clean test set (seed=42). Use two subplots side by side. Plot each
+(material, thickness) test point as a dot, colour-coded by material (five colours).
+Draw the ideal y=x line. The R² annotation should appear in the top-left corner.
+This figure is the most direct visual summary of clean-data prediction quality.]
+
+
+5.2 Noise Robustness Study
+────────────────────────────
+
+Table 5.2 shows the RMSE at 501 wavelengths for all six conditions (clean plus five
+noise types) and all three models. The analytical solver results are included for
+direct comparison. They are discussed in detail in Section 5.3.
+
+      TABLE 5.2. RMSE (nm) at 501 wavelengths across all noise conditions
+      ─────────────────────────────────────────────────────────────────────────────
+      Condition    Analytical    Linear Reg.        Random Forest      MLP
+      ─────────────────────────────────────────────────────────────────────────────
+      Clean          0.000      161.21 ± 47.65     1.86 ± 0.26     1.56 ± 0.38
+      Gaussian       0.130       21.82 ± 2.71      2.02 ± 0.34     1.57 ± 0.28
+      Relative       4.293       17.97 ± 2.94      2.21 ± 0.21     1.66 ± 0.32
+      Uniform        6.514       21.42 ± 5.55      2.06 ± 0.33     1.64 ± 0.23
+      Bias           7.749      182.04 ± 46.76     1.97 ± 0.28     1.62 ± 0.53
+      Mixed          4.048       30.15 ± 7.10      2.12 ± 0.19     1.32 ± 0.26
+      ─────────────────────────────────────────────────────────────────────────────
+
+Several patterns in this table are worth examining carefully.
+
+Random Noise Degrades ML Gradually. Moving from clean to Gaussian noise, the RF
+RMSE rises from 1.86 to 2.02 nm, an increase of 0.16 nm or about 9%. The MLP
+rises from 1.56 to 1.57 nm, an increase so small it is essentially within the seed-
+to-seed variation. Uniform noise, which is wider than Gaussian (effective standard
+deviation about 0.58° versus 0.5° for Gaussian), produces similarly modest
+degradation: RF reaches 2.06 nm, MLP reaches 1.64 nm. These results confirm that
+both ensemble and neural network models absorb random noise well when they have
+been trained on clean data, because the model implicitly averages over the noise
+distribution present in the test spectra. The inversion problem remains well-
+conditioned under symmetric noise.
+
+Relative Noise is Moderately Challenging. Relative noise at the 1% level pushes
+the RF to 2.21 nm and the MLP to 1.66 nm. These are slightly higher than the
+random noise cases, which makes physical sense: relative noise perturbs the spectral
+bands with the largest Ψ and Δ values most heavily, and those bands tend to carry
+the most information about film thickness. A perturbation concentrated in the most
+informative channels is therefore more damaging than a uniformly distributed one.
+
+Systematic Bias Barely Affects RF and MLP. The bias condition (a constant +0.5°
+offset on every Ψ and Δ value) results in RF RMSE = 1.97 ± 0.28 nm and MLP RMSE
+= 1.62 ± 0.53 nm. These numbers are barely above the clean-data values. This is a
+somewhat counterintuitive result: one might expect a constant offset to shift all
+predictions systematically. The explanation is that the model learns a mapping from
+spectrum shape to thickness, and a constant bias shifts the entire spectrum rigidly
+while preserving its shape. The model can partly compensate for this because it has
+seen spectra across five materials and 61 thicknesses during training, providing a
+rich context that limits how far a rigid spectral shift can push the prediction
+away from the correct answer. The wider standard deviation for the MLP under bias
+(±0.53 nm versus ±0.26 nm for RF) suggests the neural network is somewhat more
+sensitive to this effect when initialised differently, but the mean remains low.
+
+Mixed Noise Produces the Best MLP Result. Most strikingly, the MLP achieves its
+lowest RMSE of 1.32 ± 0.26 nm under mixed noise, actually better than on clean
+data. This is not a numerical artefact. Mixed noise combines Gaussian random
+variation with a constant bias, which adds variety to the training distribution and
+acts as a form of implicit regularisation. The diversified noise exposure apparently
+helps the MLP generalise better during training, because the early-stopping
+criterion allows it to converge to a flatter minimum in weight space. The Random
+Forest shows no such effect (2.12 nm under mixed, versus 1.86 nm clean), which is
+consistent with RF being an ensemble of discrete trees rather than a smooth
+continuous function. Trees do not benefit from noise-as-regularisation in the same
+way a gradient-trained neural network does.
+
+[FIGURE 5.2: Grouped bar chart showing RMSE for RF and MLP across all six noise
+conditions. Use one group of bars per condition on the x-axis. Include RF and MLP
+bars side by side within each group. Annotate the clean-data bars for reference.
+Do not include LR in this plot, its scale would swamp the informative range.]
+
+
+5.3 Analytical Baseline Comparison (ML vs Classical Solver)
+─────────────────────────────────────────────────────────────
+
+The analytical grid-search solver provides a fundamentally different kind of
+reference. On clean data it achieves RMSE = 0.000 nm, exact to machine precision.
+This result must be interpreted carefully. It arises because the test spectra were
+generated by the same Fresnel forward model that the solver uses for inversion, with
+no model mismatch and no noise. Under these conditions the solver is guaranteed to
+find the exact answer: it is, in effect, solving its own equation. The result
+therefore represents an idealised upper bound on analytical performance under
+perfect model fidelity, not a claim about what would be achieved on real
+experimental data. Real ellipsometry data contains instrument drift, surface
+roughness, and approximation errors in the optical constants, all of which would
+shift this number upward. With that caveat clearly stated, the clean-data result
+still serves a valid purpose: it establishes the noise-free ceiling against which
+the ML models and the degraded-noise analytical results can both be measured.
+
+Under noise, the picture reverses sharply. Gaussian noise pushes the analytical
+RMSE to just 0.130 nm, which still beats both ML models. This is because Gaussian
+noise is zero-mean: on average, the minimum of the chi-squared cost function is
+still at the correct thickness, and with 501 wavelength points the noise largely
+averages out across the spectrum. The solver remains effective.
+
+For relative noise, the analytical RMSE jumps to 4.293 nm, which is roughly twice
+the MLP result (1.66 nm) and nearly double the RF result (2.21 nm). For uniform
+noise it reaches 6.514 nm versus MLP 1.64 nm and RF 2.06 nm. For systematic bias,
+the analytical RMSE of 7.749 nm is the worst of all, nearly five times the MLP
+result (1.62 nm) and four times the RF result (1.97 nm). The failure mode of the
+analytical solver under systematic noise is clear: a constant offset adds a rigid
+shift to every data point, which moves the global minimum of chi-squared away from
+the true thickness by a fixed, potentially large amount. Unlike a trained model, the
+solver has no mechanism to absorb this shift. It trusts the measured spectrum as
+ground truth.
+
+      TABLE 5.3. Direct comparison: ML vs Analytical under each noise type
+      ─────────────────────────────────────────────────────────────────────────────
+      Condition    Analytical    RF RMSE     MLP RMSE    ML Advantage (MLP)
+      ─────────────────────────────────────────────────────────────────────────────
+      Clean         0.000 nm    1.86 nm      1.56 nm    Analytical wins
+      Gaussian      0.130 nm    2.02 nm      1.57 nm    Analytical wins
+      Relative      4.293 nm    2.21 nm      1.66 nm    ML wins  (×2.6)
+      Uniform       6.514 nm    2.06 nm      1.64 nm    ML wins  (×4.0)
+      Bias          7.749 nm    1.97 nm      1.62 nm    ML wins  (×4.8)
+      Mixed         4.048 nm    2.12 nm      1.32 nm    ML wins  (×3.1)
+      ─────────────────────────────────────────────────────────────────────────────
+
+The crossover point is between Gaussian and relative noise. Below that level of
+systematic or non-Gaussian noise, the physics-based solver is superior. Above it,
+machine learning dominates. This result is the central quantitative finding of the
+thesis: the advantage of ML is not universal but is specifically tied to how well
+the noise distribution is captured in the training data.
+
+[FIGURE 5.3: Bar chart comparing analytical RMSE, RF RMSE, and MLP RMSE under all
+six noise conditions on a single y-axis (nm). Use logarithmic scale on the y-axis
+so the clean analytical result (0.000 nm, an idealised perfect-fidelity value)
+is handled as a near-zero value (set floor at 0.01 nm for display). The crossover from analytical-wins to ML-wins
+between Gaussian and Relative should be visually clear.]
+
+
+5.4 Study 1. Effect of Wavelength Range
+──────────────────────────────────────────
+
+Study 1 progressively reduces the number of wavelength points used as input
+features from 501 down to 50. Table 5.4 shows selected results at representative
+wavelength counts.
+
+      TABLE 5.4. Study 1: RMSE vs wavelength count (clean data, mean ± std)
+      ─────────────────────────────────────────────────────────────────────────────
+      Wavelengths    RF RMSE (nm)      MLP RMSE (nm)
+      ─────────────────────────────────────────────────────────────────────────────
+          501        1.86 ± 0.26       1.56 ± 0.38
+          300        1.83 ± 0.21       1.95 ± 0.31
+          200        1.74 ± 0.32       1.92 ± 0.60
+          150        1.72 ± 0.32       1.67 ± 0.39
+          100        1.79 ± 0.26       1.50 ± 0.26
+           75        1.71 ± 0.27       1.89 ± 0.48
+           50        1.57 ± 0.21       1.98 ± 0.27
+      ─────────────────────────────────────────────────────────────────────────────
+
+The most striking observation is that for the Random Forest, RMSE is almost flat
+across the entire range from 501 down to 50 wavelengths. The RF achieves 1.86 nm
+at 501 points and 1.57 nm at 50 points, meaning it actually performs marginally
+better with fewer features. This is a regularisation effect: the RF's random feature
+subsampling at each tree split is more effective when the total number of features
+is smaller, reducing the chance that a noisy feature is selected. The implication is
+that the RF model does not need the full 501-wavelength spectrum to achieve its peak
+accuracy. A 10-fold reduction in spectral density is essentially free.
+
+The MLP shows more variation across the sweep. At 100 wavelengths it reaches its
+best result of 1.50 nm, which is slightly better than 1.56 nm at the full 501.
+At very low wavelength counts (50 points), it degrades to 1.98 nm, overtaking the
+RF. The variation is larger across seeds at low wavelength counts, as evidenced by
+the wider standard deviations, indicating that the particular evenly-spaced channels
+selected matter more for the MLP than for the RF.
+
+Both models remain well below 3 nm RMSE at all wavelength counts tested. This is
+one of the most practically important findings in the study. An instrument that
+measures at 50 evenly-spaced wavelengths across 300–800 nm can deliver comparable
+accuracy to one measuring at 501, at a fraction of the spectral cost.
+
+[FIGURE 5.4: Line plots of RMSE (nm) versus number of wavelength points for RF
+and MLP. Add ±1σ shaded bands around each line. Mark the 501-point baseline with
+a vertical dashed line and the 100-point and 50-point positions with annotations.
+The near-flat RF curve and the slight MLP dip around 100 wl are the key visual
+features to preserve. Clean data only.]
+
+
+5.5 Study 2. Effect of Training Dataset Size
+───────────────────────────────────────────────
+
+Study 2 reduces the number of distinct film thicknesses represented in the training
+set from the full 61 values (every integer nm from 20 to 80) down to 1. Table 5.5
+shows selected results.
+
+      TABLE 5.5. Study 2: RMSE vs training dataset size (clean data, mean ± std)
+      ─────────────────────────────────────────────────────────────────────────────
+      Thicknesses    Samples (total)    RF RMSE (nm)      MLP RMSE (nm)
+      ─────────────────────────────────────────────────────────────────────────────
+           61            305            1.86 ± 0.26       1.56 ± 0.38
+           50            250            2.23 ± 0.35       3.16 ± 1.45
+           40            200            2.62 ± 0.53       2.54 ± 0.86
+           30            150            3.30 ± 0.87       3.32 ± 1.01
+           20            100            5.82 ± 1.85       9.96 ± 5.24
+           10             50            9.31 ± 2.35      14.21 ± 6.47
+            5             25           15.11 ± 4.72      34.37 ± 14.53
+      ─────────────────────────────────────────────────────────────────────────────
+
+The degradation with dataset size is, as expected, much steeper than the degradation
+with wavelength reduction. Halving the training data from 61 to 30 thicknesses
+pushes the RF to 3.30 nm and MLP to 3.32 nm, roughly double the full-data error.
+Reducing to 20 thicknesses (100 samples total), the MLP error reaches approximately
+10 nm, while the RF is more resilient at 5.82 nm. Below 20 thicknesses, both models
+degrade sharply, and the standard deviation across seeds becomes very large,
+indicating that individual split realisations dominate the outcome.
+
+The contrast with the wavelength sweep is instructive. Cutting features by 10x
+(from 501 to 50 wavelengths) costs essentially nothing. Cutting training data by
+roughly the same factor (from 61 to 10 thicknesses) increases RF RMSE by 5x and
+MLP RMSE by 9x. This confirms that the binding constraint on prediction accuracy
+is the number of distinct training samples, not the number of spectral channels.
+For practical deployment, this means it is far more important to include diverse
+thickness values in the calibration set than to maximise spectral resolution.
+
+The RF maintains better data efficiency than the MLP throughout the lower end of
+the size range. At 10 thicknesses, the RF RMSE is 9.31 nm while the MLP is 14.21
+nm. At 5 thicknesses, the disparity grows further. Random Forests are well-known
+for their robustness to small sample counts because bagging and random feature
+selection together provide strong implicit regularisation, whereas the MLP with
+its fixed max_iter and early stopping cannot converge as reliably when the
+validation split draws from an already-tiny dataset.
+
+[FIGURE 5.5: Line plots of RMSE (nm) versus number of training thicknesses for RF
+and MLP, with ±1σ shaded bands. Use a logarithmic x-axis. Mark the 30-thickness
+and 10-thickness positions with vertical annotations. The substantially steeper MLP
+degradation at low sample counts versus the more gradual RF decline is the key
+feature to emphasise.]
+
+
+5.6 Diagnostic Analysis
+─────────────────────────
+
+5.6.1 Residual Error Distributions
+
+Figure 5.6 shows the distribution of signed prediction errors (predicted minus true
+thickness) for each of the three models on the clean test set with seed 42. The
+signed residual is more informative than the absolute error because it reveals
+whether prediction errors are systematic (biased in one direction) or random
+(symmetrically distributed around zero).
+
+The Linear Regression residuals have a mean of approximately −29.50 nm, confirming
+a strong systematic underprediction bias. This is consistent with the underdetermined
+nature of the OLS solution: the weight vector is not unique, and for most random
+splits it converges to a solution that systematically underestimates thickness. The
+distribution is wide and multi-modal, spanning hundreds of nanometres.
+
+The Random Forest residuals are centred very close to zero, with a mean of +0.27 nm.
+The distribution is approximately symmetric and much narrower than LR, with most
+errors falling within ±3 nm of zero. The near-zero mean confirms that RF makes no
+systematic prediction error, its mistakes are random, not directional. This is
+the hallmark of a well-generalising model.
+
+The MLP residuals show a similarly zero-centred distribution, with a mean of
++0.21 nm. The width is comparable to RF with a slight tendency toward narrower
+tails, consistent with the marginally lower RMSE. Like the RF, the MLP has no
+meaningful systematic bias, what errors it makes are scattered evenly above and
+below the true value.
+
+[FIGURE 5.6: Three residual histograms side by side, one per model (LR, RF, MLP).
+Use the signed residual (predicted minus true) on the x-axis in nanometres. For
+the LR subplot, allow the x-axis to extend to cover the full ±100+ nm range.
+For RF and MLP, use a tighter ±10 nm range to show the distribution detail. Mark
+the mean residual with a vertical dashed line in each subplot. Annotate the mean
+value in the plot title or as a text annotation.]
+
+5.6.2 Random Forest Feature Importance
+
+The Random Forest Gini feature importance provides a direct, wavelength-resolved
+measure of how much each spectral channel contributes to the ensemble's predictions.
+The importance scores are normalised so they sum to one across all 1,002 features.
+
+The cumulative importance analysis reveals that the Random Forest concentrates its
+predictive power in a small number of wavelength channels. The top 24 wavelengths
+by importance account for 50% of the total cumulative importance across the
+ensemble, and the top 100 wavelengths account for approximately 80%. To reach 95%
+of the total importance, only 205 wavelengths are needed. This means that roughly
+300 of the 501 wavelength channels are providing relatively marginal additional
+predictive value.
+
+The high-importance channels are not uniformly distributed across the 300–800 nm
+range. They cluster around spectral regions where the five materials show the
+strongest and most distinct optical features: the UV edge of silicon absorption
+around 350–420 nm, the GaAs critical point region near 400–450 nm, and the GaN
+band edge transition near 365 nm. This makes physical sense. Spectral regions where
+different materials have very different n and k values produce the most discriminative
+Ψ and Δ shapes, and it is precisely those shapes that carry the most thickness
+information when inverted.
+
+[FIGURE 5.7: Two-panel figure. Top panel: bar chart of feature importance (y-axis)
+versus wavelength (x-axis, 300–800 nm), with Ψ-channel and Δ-channel importances
+shown separately or stacked. Bottom panel: cumulative importance versus wavelength,
+with horizontal dashed lines at 50%, 80%, and 95% thresholds and vertical
+annotations marking the wavelengths at which those thresholds are crossed. This is
+one of the most physically interpretable figures in the thesis.]
+
+================================================================================

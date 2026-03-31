@@ -1,0 +1,7 @@
+condition,model,RMSE,MAE,R2,MSE
+Clean,Analytical,0.0,0.0,1.0,0.0
+Gaussian,Analytical,0.1297,0.0777,0.9999,0.0168
+Relative,Analytical,4.293,0.5092,0.9405,18.4298
+Uniform,Analytical,6.514,0.62,0.8631,42.4317
+Bias,Analytical,7.7487,0.9144,0.8063,60.043
+Mixed,Analytical,4.0477,0.3862,0.9471,16.3837

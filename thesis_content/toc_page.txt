@@ -1,0 +1,91 @@
+================================================================================
+  TABLE OF CONTENTS
+================================================================================
+
+  FRONT MATTER
+  Abstract ...............................................................  i
+  List of Abbreviations ..................................................  ii
+  List of Symbols and Units ..............................................  iii
+  List of Figures ........................................................  iv
+  List of Tables .........................................................  v
+
+  1  INTRODUCTION ........................................................  1
+     1.1  Background and Motivation ......................................  1
+     1.2  Problem Statement ..............................................  4
+     1.3  Objectives .....................................................  5
+     1.4  Scope and Limitations ..........................................  7
+     1.5  Structure of the Thesis ........................................  9
+
+  2  LITERATURE REVIEW AND THEORETICAL BACKGROUND .......................  10
+     2.1  Spectroscopic Ellipsometry .....................................  10
+     2.2  Optical Modelling of Thin Films ................................  14
+     2.3  Noise and Uncertainty in Optical Measurements ..................  18
+     2.4  Inverse Problems in Ellipsometry ...............................  23
+     2.5  Machine Learning for Regression ................................  27
+     2.6  Temperature Effects and Control Systems ........................  34
+          2.6.1  Temperature Influence on Optical Measurements ...........  34
+          2.6.2  Peltier-Based Temperature Control .......................  36
+     2.7  Related Work and Literature Overview ...........................  39
+
+  3  SYSTEM DESIGN .......................................................  43
+     3.1  Overall System Architecture ....................................  43
+     3.2  Optical Measurement System .....................................  47
+     3.3  Temperature Control System (Peltier Module) ....................  50
+          3.3.1  Peltier Module and Actuator Hardware ....................  50
+          3.3.2  Sensing Instrumentation ................................  54
+          3.3.3  PID Control Architecture ...............................  57
+          3.3.4  Measurement Stability and Thermo-Optic Effects .........  61
+          3.3.5  System Integration .....................................  64
+     3.4  Selection of Semiconductor Materials and Substrate .............  66
+     3.5  Selection of Machine Learning Models ...........................  71
+     3.6  Software and Data Processing Pipeline ..........................  75
+
+  4  SYSTEM IMPLEMENTATION ...............................................  79
+     4.1  Synthetic Dataset Generation (Fresnel Forward Simulation) ......  79
+     4.2  Noise Modelling (Gaussian, Relative, Uniform, Bias, Mixed) .....  85
+     4.3  Machine Learning Pipeline ......................................  91
+     4.4  Analytical Inverse Solver (Lookup Table Grid Search) ...........  97
+     4.5  Evaluation Framework (Study 1 and Study 2) .....................  101
+     4.6  Temperature Control System. Hardware Implementation ............  106
+          4.6.1  Sensor Acquisition .....................................  106
+          4.6.2  Control Loop Execution .................................  109
+          4.6.3  Start-up, Mode Transition, and Overshoot Management ....  112
+          4.6.4  Data Logging and Integration with Measurement Software .  115
+
+  5  RESULTS: COMPARISON OF SYSTEM PERFORMANCE ..........................  118
+     5.1  ML Performance on Clean Data ...................................  118
+     5.2  Noise Robustness Study .........................................  124
+     5.3  Analytical Baseline Comparison (ML vs Classical Solver) ........  130
+     5.4  Study 1. Effect of Wavelength Range ............................  135
+     5.5  Study 2. Effect of Training Dataset Size .......................  140
+     5.6  Diagnostic Analysis ............................................  145
+          5.6.1  Residual Error Distributions ...........................  145
+          5.6.2  Random Forest Feature Importance .......................  148
+
+  6  DISCUSSION ..........................................................  152
+     6.1  ML vs Analytical Solver Under Noise Conditions .................  152
+     6.2  Comparison of ML Models: LR, RF, and MLP .......................  158
+     6.3  Spectral Sensitivity and Wavelength Regions ....................  163
+     6.4  Limitations and Sources of Error ...............................  167
+
+  7  SUMMARY AND FURTHER DEVELOPMENT ....................................  171
+     7.1  Achievement of Objectives ......................................  171
+     7.2  Key Findings ...................................................  176
+     7.3  Further Development and Expansion Possibilities ................  180
+
+  BIBLIOGRAPHY ...........................................................  185
+
+  APPENDICES
+     Appendix A:  Complete Study 1 Results (Wavelength Range Sweep) .....  192
+     Appendix B:  Complete Study 2 Results (Dataset Size Sweep) .........  195
+     Appendix C:  Per-Material Performance Breakdown .....................  198
+     Appendix D:  Software Directory and Script Overview ................  200
+     Appendix E:  Reproducibility Notes .................................  203
+
+================================================================================
+
+  NOTE: Page numbers above are indicative estimates based on standard
+  A4 formatting at 12 pt font, 1.5 line spacing, and 2.5 cm margins.
+  Actual page numbers will be assigned during final document compilation.
+
+================================================================================

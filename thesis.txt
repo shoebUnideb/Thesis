@@ -1,0 +1,117 @@
+Table of Contents
+
+1. Introduction                                                 p.
+   1.1 Background and Motivation
+         1.1.1 Spectroscopic Ellipsometry in Semiconductor Manufacturing
+         1.1.2 Challenges in Thin Film Thickness Characterisation
+   1.2 Problem Statement
+   1.3 Objectives
+         1.3.1 Physics-Based Forward Simulation
+         1.3.2 Machine Learning-Based Thickness Prediction
+         1.3.3 Noise Robustness and Analytical Benchmarking
+   1.4 Scope and Limitations
+   1.5 Structure of the Thesis
+
+2. Theoretical Background                                       p.
+   2.1 Spectroscopic Ellipsometry
+         2.1.1 Measurement Principle and Optical Configuration
+         2.1.2 Ellipsometric Parameters: Ψ (Psi) and Δ (Delta)
+         2.1.3 Thin Film Interference and Phase Thickness
+   2.2 Optical Modelling of Thin Films
+         2.2.1 Fresnel Equations at Interfaces
+         2.2.2 Three-Layer Thin Film Model (Air / Film / Substrate)
+         2.2.3 Complex Refractive Index of Semiconductor Materials
+   2.3 Noise and Uncertainty in Optical Measurements
+         2.3.1 Sources of Measurement Noise
+         2.3.2 Noise Types: Gaussian, Relative, Uniform, Bias, Mixed
+   2.4 Inverse Problems in Ellipsometry
+         2.4.1 The Ill-Posed Inversion Challenge
+         2.4.2 Analytical Grid-Search Inversion (Lookup Table Method)
+   2.5 Machine Learning for Regression
+         2.5.1 Linear Regression
+         2.5.2 Random Forest Regressor
+         2.5.3 Multilayer Perceptron (MLP)
+         2.5.4 Training, Validation and Statistical Averaging
+         2.5.5 Performance Metrics: RMSE, MAE, R²
+   2.6 Temperature Effects and Control Systems
+         2.6.1 Temperature Influence on Optical Measurements
+         2.6.2 Peltier-Based Temperature Control
+   2.7 Literature Review
+
+3. Methodology                                                  p.
+   3.1 System Overview
+         3.1.1 Optical Measurement System
+         3.1.2 Data Generation and Processing Pipeline
+         3.1.3 Temperature Control System
+   3.2 Synthetic Dataset Generation
+         3.2.1 Fresnel Forward Simulation
+         3.2.2 Material Selection and Optical Constant Sources
+               (Si, GaAs, GaN, Ge, InP on SiO₂ substrate)
+         3.2.3 Parameter Space (Wavelength 300–800 nm, Thickness 20–80 nm)
+   3.3 Noise Modelling
+         3.3.1 Gaussian Noise (σ = 0.5°)
+         3.3.2 Relative Noise (1% amplitude-dependent)
+         3.3.3 Uniform Noise (±1°)
+         3.3.4 Systematic Bias (+0.5° constant offset)
+         3.3.5 Mixed Noise (Gaussian + Bias)
+   3.4 Temperature Control System
+         3.4.1 Peltier Module Design
+         3.4.2 Measurement Stability
+         3.4.3 System Integration
+   3.5 Machine Learning Pipeline
+         3.5.1 Wide-Format Feature Matrix Construction
+         3.5.2 Stratified Train/Test Split by Material
+         3.5.3 Model Configurations and Hyperparameters
+         3.5.4 Multi-Seed Statistical Averaging Protocol (5 Seeds)
+   3.6 Analytical Inverse Solver
+         3.6.1 Lookup Table Construction (Thickness Grid: 1–150 nm, Step 0.1 nm)
+         3.6.2 Sum-of-Squared-Residuals Grid Search
+   3.7 Evaluation Studies
+         3.7.1 Study 1 — Wavelength Range Sweep (501 → 50 wavelengths, 91 cases)
+         3.7.2 Study 2 — Dataset Size Sweep (61 → 1 thickness values, 61 cases)
+         3.7.3 Cross-Noise and Cross-Model Comparison Framework
+
+4. Results                                                      p.
+   4.1 Machine Learning Performance on Clean Data
+         4.1.1 Study 1: Effect of Wavelength Range on RMSE
+         4.1.2 Study 2: Effect of Training Dataset Size on RMSE
+         4.1.3 Model Comparison at Full Resolution (501 Wavelengths)
+   4.2 Noise Robustness Study
+         4.2.1 Gaussian Noise
+         4.2.2 Relative Noise
+         4.2.3 Uniform Noise
+         4.2.4 Systematic Bias
+         4.2.5 Mixed Noise
+         4.2.6 Cross-Noise Comparison and RMSE Degradation Heatmap
+   4.3 Analytical Baseline Comparison
+         4.3.1 Performance on Clean Data (Exact Inversion)
+         4.3.2 Performance Under Noise (ML vs Analytical)
+         4.3.3 Study 1 Overlay: Analytical vs RF vs MLP
+   4.4 Diagnostic Analysis
+         4.4.1 Residual Distributions (Bias vs Random Error)
+         4.4.2 Per-Material Performance Breakdown
+         4.4.3 Random Forest Feature Importance (Spectral Sensitivity)
+         4.4.4 Cumulative Importance and Wavelength Selection
+
+5. Discussion                                                   p.
+   5.1 ML vs Analytical Solver Under Realistic Noise Conditions
+   5.2 Comparison of ML Models: LR, RF, and MLP
+   5.3 Spectral Sensitivity and Physically Meaningful Wavelength Regions
+   5.4 Impact of Dataset Size and Training Data Requirements
+   5.5 Noise Type and Its Effect on Inversion Accuracy
+   5.6 Limitations and Sources of Error
+   5.7 Electrical Engineering Relevance and Practical Considerations
+
+6. Summary                                                      p.
+   6.1 Achievement of Thesis Objectives
+   6.2 Key Findings
+   6.3 Scientific Contributions
+   6.4 Future Improvements
+         6.4.1 Validation on Real Experimental Ellipsometry Data
+         6.4.2 Extension to More Materials and Wavelength Ranges
+         6.4.3 Deep Learning Approaches (CNN, Transformer)
+         6.4.4 Multi-Layer Film Stacks
+
+── BACK MATTER (unnumbered) ───────────────────────────────────
+  Bibliography                                                  p.
+  Appendices                                                    p.
